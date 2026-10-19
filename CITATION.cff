@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use PE Bench in your research, please cite it as below."
+title: "PE Bench"
+authors:
+  - name: "Compound AI"
+version: "v1.0"
+date-released: "2026-10-19"
+license: "Apache-2.0"
+repository-code: "https://github.com/GetCompoundAI/pe-bench"
+url: "https://github.com/GetCompoundAI/pe-bench/tree/v1.0"

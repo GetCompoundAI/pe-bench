@@ -1,0 +1,32 @@
+name: Release tag
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Sync v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: Tag the merged version and create its release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGED: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" > /dev/null; then
+            echo "$version is already tagged; this sync kept the version"
+            exit 0
+          fi
+          notes=$(awk -v v="## $version" '$0 == v {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md)
+          gh release create "$version" --target "$MERGED" --title "$version" --notes "$notes"
