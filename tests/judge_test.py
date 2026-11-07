@@ -16,7 +16,7 @@ class _Scripted:
     replies: list[str | None]
     asked: list[tuple[str, str]] = field(default_factory=list)
 
-    async def text(self, system: str, question: str) -> str | None:
+    async def text(self, system: str, question: str, evidence: str = "") -> str | None:
         self.asked.append((system, question))
         return self.replies.pop(0)
 
@@ -62,7 +62,7 @@ async def test_an_answer_with_no_text_is_ungradeable() -> None:
 class _Refusing:
     asked: int = 0
 
-    async def text(self, system: str, question: str) -> str | None:
+    async def text(self, system: str, question: str, evidence: str = "") -> str | None:
         self.asked += 1
         raise anthropic.BadRequestError(
             "prompt is too long: 1200000 tokens > 1000000 maximum",

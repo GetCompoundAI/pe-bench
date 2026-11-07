@@ -19,7 +19,7 @@ class _Scripted:
     replies: list[str]
     asked: list[str] = field(default_factory=list)
 
-    async def text(self, system: str, question: str) -> str | None:
+    async def text(self, system: str, question: str, evidence: str = "") -> str | None:
         self.asked.append(question)
         return self.replies.pop(0)
 
