@@ -238,9 +238,11 @@ def _labelled_values(
 
     def shows(holder: ET.Element, inherited: tuple[bool, ...]) -> tuple[bool, ...]:
         return tuple(
-            was
-            if (found := holder.find(f"{{{NS_C}}}{flag}")) is None
-            else _is_true(found)
+            (
+                was
+                if (found := holder.find(f"{{{NS_C}}}{flag}")) is None
+                else _is_true(found)
+            )
             for flag, was in zip(flags, inherited)
         )
 
@@ -256,10 +258,12 @@ def _labelled_values(
     explicit = explicit_format(labels, None)
     by_point = {
         _index_of(one): (
-            (False, False, False)
-            if one.find(f"{{{NS_C}}}tx") is not None
-            or _is_true(one.find(f"{{{NS_C}}}delete"))
-            else shows(one, default),
+            (
+                (False, False, False)
+                if one.find(f"{{{NS_C}}}tx") is not None
+                or _is_true(one.find(f"{{{NS_C}}}delete"))
+                else shows(one, default)
+            ),
             explicit_format(one, explicit),
         )
         for one in labels.findall(f"{{{NS_C}}}dLbl")
@@ -291,7 +295,7 @@ def _labelled_values(
     return shown
 
 
-def _formatted_categories(series: ET.Element) -> tuple[str, ...]:
+def formatted_categories(series: ET.Element) -> tuple[str, ...]:
     categories = series.find(f"{{{NS_C}}}cat")
     if categories is None:
         return ()
@@ -379,7 +383,7 @@ def _chart_labels(zf: zipfile.ZipFile, chart_names: list[str]) -> str:
                             for el in series.findall(f"{{{NS_C}}}tx//{{{NS_C}}}v")
                             if el.text
                         )
-                    categories[_formatted_categories(series)] = None
+                    categories[formatted_categories(series)] = None
                     if values := _labelled_values(series, group, tabled=tabled):
                         labelled.append(" | ".join(values))
         parts.extend(
@@ -416,19 +420,19 @@ def presentation_slide_size(raw: bytes) -> tuple[int, int] | None:
 _COLOR_MAP_DIRECT = {"bg1": "lt1", "tx1": "dk1", "bg2": "lt2", "tx2": "dk2"}
 
 
-def _first_rel_target(zf: zipfile.ZipFile, part_name: str, prefix: str) -> str | None:
+def first_rel_target(zf: zipfile.ZipFile, part_name: str, prefix: str) -> str | None:
     for target, mode in part_rels(zf, part_name).values():
         if mode is None and posixpath.basename(target).startswith(prefix):
             return target
     return None
 
 
-def _theme_of_slide(
+def theme_of_slide(
     zf: zipfile.ZipFile, slide_name: str
 ) -> tuple[str | None, str | None]:
-    layout = _first_rel_target(zf, slide_name, "slideLayout")
-    master = _first_rel_target(zf, layout, "slideMaster") if layout else None
-    theme = _first_rel_target(zf, master, "theme") if master else None
+    layout = first_rel_target(zf, slide_name, "slideLayout")
+    master = first_rel_target(zf, layout, "slideMaster") if layout else None
+    theme = first_rel_target(zf, master, "theme") if master else None
     return (theme, master)
 
 
@@ -457,7 +461,7 @@ def _theme_scheme(zf: zipfile.ZipFile, theme_name: str) -> dict[str, str]:
     return out
 
 
-def _theme_fonts(zf: zipfile.ZipFile, theme_name: str) -> dict[str, str]:
+def theme_fonts(zf: zipfile.ZipFile, theme_name: str) -> dict[str, str]:
     if theme_name not in zf.namelist():
         return {}
     try:
@@ -708,10 +712,10 @@ def slide_views(raw: bytes) -> list[SlideView]:
                 root = ET.fromstring(zf.read(name))
             except ET.ParseError:
                 continue
-            theme, master = _theme_of_slide(zf, name)
+            theme, master = theme_of_slide(zf, name)
             scheme = _theme_scheme(zf, theme) if theme else {}
             mapping = _color_map(zf, master)
-            fonts_map = _theme_fonts(zf, theme) if theme else {}
+            fonts_map = theme_fonts(zf, theme) if theme else {}
             color_uses = Counter(_element_color_uses(root, scheme, mapping))
             font_uses = Counter(_element_font_uses(root, fonts_map))
             for chart_part in slide_chart_part_refs(zf, name):
