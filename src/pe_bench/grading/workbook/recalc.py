@@ -12,6 +12,8 @@ from pe_bench.core import Ungradeable, Unreachable
 
 RECALC_TIMEOUT_SECONDS = 120
 RECALC_AT_ONCE = 4
+ITERATION_COUNT = 100
+ITERATION_EPSILON = 0.0001
 
 _running = threading.BoundedSemaphore(RECALC_AT_ONCE)
 
@@ -24,6 +26,20 @@ PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 WORKBOOK_PART = "xl/workbook.xml"
 WORKBOOK_RELS_PART = "xl/_rels/workbook.xml.rels"
 SHARED_STRINGS_PART = "xl/sharedStrings.xml"
+
+_BEFORE_CALC_PR = frozenset(
+    {
+        "fileVersion",
+        "fileSharing",
+        "workbookPr",
+        "workbookProtection",
+        "bookViews",
+        "sheets",
+        "functionGroups",
+        "externalReferences",
+        "definedNames",
+    }
+)
 
 RECALC_ON_LOAD_XCU = """<?xml version="1.0" encoding="UTF-8"?>
 <oor:items xmlns:oor="http://openoffice.org/2001/registry">
@@ -153,12 +169,45 @@ def _seed_profile(profile: Path) -> None:
     (user / "registrymodifications.xcu").write_text(RECALC_ON_LOAD_XCU)
 
 
-def _recalculated(data: bytes, soffice: str) -> bytes:
-    with tempfile.TemporaryDirectory() as raw:
+def _iterating(data: bytes) -> bytes:
+    with zipfile.ZipFile(io.BytesIO(data)) as package:
+        book = etree.fromstring(package.read(WORKBOOK_PART))
+    calculation = book.find(_tag("calcPr"))
+    if calculation is None:
+        calculation = etree.Element(_tag("calcPr"))
+        preceding = [
+            one for one in book if etree.QName(one).localname in _BEFORE_CALC_PR
+        ]
+        book.insert(book.index(preceding[-1]) + 1 if preceding else 0, calculation)
+    calculation.set("iterate", "1")
+    calculation.set("iterateCount", str(ITERATION_COUNT))
+    calculation.set("iterateDelta", str(ITERATION_EPSILON))
+    return rebuilt(
+        data,
+        {
+            WORKBOOK_PART: etree.tostring(
+                book, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
+        },
+    )
+
+
+def recalculated(data: bytes, *, iterative: bool) -> bytes:
+    soffice = shutil.which("soffice")
+    if soffice is None:
+        raise Unreachable(
+            "LibreOffice is not installed: `soffice` is not on PATH, so the "
+            "workbook cannot be recalculated"
+        )
+    try:
+        source_bytes = _iterating(data) if iterative else data
+    except (zipfile.BadZipFile, KeyError, etree.XMLSyntaxError):
+        source_bytes = data
+    with _running, tempfile.TemporaryDirectory() as raw:
         root = Path(raw)
         source = root / "in" / "book.xlsx"
         source.parent.mkdir(parents=True)
-        source.write_bytes(data)
+        source.write_bytes(source_bytes)
         _seed_profile(root / "profile")
         (root / "out").mkdir()
         command = [
@@ -224,46 +273,37 @@ def fill_cached_values(data: bytes) -> bytes:
     if not missing:
         return data
 
-    soffice = shutil.which("soffice")
-    if soffice is None:
-        raise Unreachable(
-            "LibreOffice is not installed: `soffice` is not on PATH, so the "
-            "workbook's missing cached values cannot be recalculated"
-        )
-    with _running:
-        with zipfile.ZipFile(io.BytesIO(data)) as package:
-            roots = {
-                name: etree.fromstring(package.read(parts[name])) for name in missing
-            }
-        recalculated = _recalculated(data, soffice)
+    with zipfile.ZipFile(io.BytesIO(data)) as package:
+        roots = {name: etree.fromstring(package.read(parts[name])) for name in missing}
+    resaved = recalculated(data, iterative=False)
 
-        replacements: dict[str, bytes] = {}
-        with zipfile.ZipFile(io.BytesIO(recalculated)) as package:
-            strings = _shared_strings(package)
-            their_parts = _sheet_parts(package)
-            for name, refs in missing.items():
-                part = their_parts.get(name)
-                if part is None:
+    replacements: dict[str, bytes] = {}
+    with zipfile.ZipFile(io.BytesIO(resaved)) as package:
+        strings = _shared_strings(package)
+        their_parts = _sheet_parts(package)
+        for name, refs in missing.items():
+            part = their_parts.get(name)
+            if part is None:
+                continue
+            theirs = _cells_by_ref(etree.fromstring(package.read(part)))
+            ours = _cells_by_ref(roots[name])
+            written = False
+            for ref in refs:
+                their_cell = theirs.get(ref)
+                if their_cell is None:
                     continue
-                theirs = _cells_by_ref(etree.fromstring(package.read(part)))
-                ours = _cells_by_ref(roots[name])
-                written = False
-                for ref in refs:
-                    their_cell = theirs.get(ref)
-                    if their_cell is None:
-                        continue
-                    computed = _computed(their_cell, strings)
-                    if computed is None:
-                        continue
-                    _write_value(ours[ref], computed[0], computed[1])
-                    written = True
-                if written:
-                    replacements[parts[name]] = etree.tostring(
-                        roots[name],
-                        xml_declaration=True,
-                        encoding="UTF-8",
-                        standalone=True,
-                    )
-        if not replacements:
-            return data
-        return rebuilt(data, replacements)
+                computed = _computed(their_cell, strings)
+                if computed is None:
+                    continue
+                _write_value(ours[ref], computed[0], computed[1])
+                written = True
+            if written:
+                replacements[parts[name]] = etree.tostring(
+                    roots[name],
+                    xml_declaration=True,
+                    encoding="UTF-8",
+                    standalone=True,
+                )
+    if not replacements:
+        return data
+    return rebuilt(data, replacements)

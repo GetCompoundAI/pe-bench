@@ -12,7 +12,6 @@ from pe_bench.office.workbook.types import Workbook
 
 logger = logging.getLogger(__name__)
 
-
 _INPUT_HINTS = (
     "lbo model precedent",
     "consolidated_financial",
