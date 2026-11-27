@@ -5,7 +5,7 @@ from typing import TypeAlias
 
 import lxml.etree
 
-safe_parser = lxml.etree.XMLParser(resolve_entities=False)
+safe_parser = lxml.etree.XMLParser(resolve_entities=False, no_network=True)
 
 Element: TypeAlias = lxml.etree._Element
 

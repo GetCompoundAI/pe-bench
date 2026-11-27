@@ -129,13 +129,13 @@ async def locate_table(
             if entities is not None
             else ""
         )
-        + f"{budget_note}WORKBOOK DATA:\n{evidence}"
     )
+    shown = f"{budget_note}WORKBOOK DATA:\n{evidence}"
     asked = question
     problems: list[str] = []
     for _attempt in range(TABLE_ATTEMPTS):
         answer = await logged_answer(
-            asked, LocatedTable, instruction=_TABLE_INSTRUCTION
+            asked, LocatedTable, instruction=_TABLE_INSTRUCTION, evidence=shown
         )
         problems = _table_problems(
             book, answer, None if entities is None else list(entities), columns
