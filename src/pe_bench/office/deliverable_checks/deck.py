@@ -3,6 +3,8 @@ import posixpath
 import xml.etree.ElementTree as ET
 import zipfile
 
+from defusedxml.ElementTree import fromstring as parse_xml
+
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 NS_C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -24,7 +26,7 @@ def part_rels(zf: zipfile.ZipFile, part_name: str) -> dict[str, tuple[str, str |
     if rels_name not in zf.namelist():
         return {}
     out: dict[str, tuple[str, str | None]] = {}
-    for rel in ET.fromstring(zf.read(rels_name)).findall(f"{{{NS_R}}}Relationship"):
+    for rel in parse_xml(zf.read(rels_name)).findall(f"{{{NS_R}}}Relationship"):
         rid = rel.get("Id")
         target = rel.get("Target", "")
         if not rid or not target:
@@ -70,7 +72,7 @@ def ordered_slide_names(zf: zipfile.ZipFile) -> list[str]:
     )
     if "ppt/presentation.xml" not in zf.namelist():
         return by_file
-    lst = ET.fromstring(zf.read("ppt/presentation.xml")).find(f"{{{NS_P}}}sldIdLst")
+    lst = parse_xml(zf.read("ppt/presentation.xml")).find(f"{{{NS_P}}}sldIdLst")
     if lst is None:
         return by_file
     rels = part_rels(zf, "ppt/presentation.xml")
@@ -88,7 +90,7 @@ def slide_chart_part_refs(zf: zipfile.ZipFile, slide_name: str) -> list[str]:
         return []
     rels = part_rels(zf, slide_name)
     refs: list[str] = []
-    for gf in chart_graphic_frames(ET.fromstring(zf.read(slide_name))):
+    for gf in chart_graphic_frames(parse_xml(zf.read(slide_name))):
         rid = frame_chart_rid(gf)
         target = rels.get(rid) if rid else None
         if target is not None and target[1] is None and target[0] in zf.namelist():

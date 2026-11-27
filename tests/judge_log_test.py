@@ -19,7 +19,7 @@ class _Scripted:
     replies: list[str]
     asked: list[str] = field(default_factory=list)
 
-    async def text(self, system: str, question: str) -> str | None:
+    async def text(self, system: str, question: str, evidence: str = "") -> str | None:
         self.asked.append(question)
         return self.replies.pop(0)
 
@@ -39,12 +39,18 @@ async def test_one_grading_asks_a_repeated_locator_question_once() -> None:
     judge.configure(scripted)
     located: list[str] = []
 
-    async def locates(result: Result) -> bool:
+    async def locates_revenue(result: Result) -> bool:
         answer = await logged_answer("where is revenue?", _Located, instruction="")
         located.append(answer.cells)
         return True
 
-    first, second = rubric(weight=1)(locates), rubric(weight=1)(locates)
+    async def locates_revenue_for_growth(result: Result) -> bool:
+        answer = await logged_answer("where is revenue?", _Located, instruction="")
+        located.append(answer.cells)
+        return True
+
+    first = rubric(weight=1)(locates_revenue)
+    second = rubric(weight=1)(locates_revenue_for_growth)
     verdicts = await grade([first, second], Result(answers=[], files={}))
     assert ([True, True], ["C4:F4", "C4:F4"], 1) == (
         [one.passed for one in verdicts],
